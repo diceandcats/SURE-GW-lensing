@@ -87,7 +87,7 @@ class ClusterLensing:
         bottom = bottom_left * (1 - dx) + bottom_right * dx
         alpha = top * dy + bottom *(1 - dy)
         src_guess = np.array([x-alpha[0], y-alpha[1]])
-        return src_guess, alpha     # in pixel
+        return src_guess, alpha
     
 
     def diff_interpolate (self, img_guess):
@@ -104,8 +104,8 @@ class ClusterLensing:
 
         Parameters:
         ---------------
-        x_src: The x coordinate of the source in arcsec.
-        y_src: The y coordinate of the source in arcsec.
+        x_src: The x coordinate of the source in pixel.
+        y_src: The y coordinate of the source in pixel.
         pixscale: The pixel scale of the deflection map in arcsec/pixel.
 
         Returns:
@@ -138,22 +138,25 @@ class ClusterLensing:
         #print(f'Number of pixels: {[np.sum(len(images[i])) for i in range(len(images))]}')
         
         # Get the image positions
-        plt.scatter(self.x_src* pixscale, self.y_src* pixscale, c='b')                                            #plot in arcsec
-        plt.scatter([i[0]* pixscale for i in coordinates], [i[1]* pixscale for i in coordinates], c='y', s=5)     #plot in arcsec
+        #plt.scatter(self.x_src* pixscale, self.y_src* pixscale, c='b')                                            #plot in arcsec
+        #plt.scatter([i[0]* pixscale for i in coordinates], [i[1]* pixscale for i in coordinates], c='y', s=5)     #plot in arcsec
 
         img = [[] for _ in range(len(images))]
-       
+        img_pos_x = []
+        img_pos_y = []
 
         for i in range(len(images)):                   #pylint: disable=consider-using-enumerate
             x_max, x_min = np.max(images[i][:,0]), np.min(images[i][:,0])
             y_max, y_min = np.max(images[i][:,1]), np.min(images[i][:,1])
             img_guess = (np.random.uniform(x_min, x_max), np.random.uniform(y_min, y_max))
-            pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-7) # the 2 is for wider boundary
+            pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-9) # the 2 is for wider boundary
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
-            plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
+            #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
             img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)
+            img_pos_x.append(pos.x[0]* pixscale)
+            img_pos_y.append(pos.x[1]* pixscale)
 
-        return img              # in arcsec
+        return img_pos_x,img_pos_y              # in arcsec
 
 
     def get_magnifications(self, h = 1e-9):
@@ -255,7 +258,7 @@ class ClusterLensing:
         time_delay_distance = (1 + z_L) * D_L * D_S / D_LS * const.Mpc
         #print(f"Time-delay distance: {time_delay_distance.value}")
         dt_days = np.array(dt) * time_delay_distance.value / const.c / const.day_s * const.arcsec ** 2
-        print(f"Numerical time delay in days: {dt_days} days")
+        #print(f"Numerical time delay in days: {dt_days} days")
         return dt_days
 
 
