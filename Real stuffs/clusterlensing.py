@@ -7,6 +7,7 @@ from sklearn.cluster import DBSCAN
 import scipy.optimize._minimize as minimize
 from astropy.cosmology import FlatLambdaCDM
 import lenstronomy.Util.constants as const
+import pandas as pd
 
 class ClusterLensing:
     """
@@ -97,6 +98,21 @@ class ClusterLensing:
         src_guess = self.def_angle_interpolate(img_guess[0],img_guess[1])[0]    # in pixel
         return np.sqrt((src_guess[0]-real_src[0])**2 + (src_guess[1]-real_src[1])**2)
     
+    def clustering(self):
+        """
+        Cluster the image positions.
+        """
+        coordinates = np.array(self.find_rough_def_pix())
+        dbscan = DBSCAN(eps=3, min_samples=1).fit(coordinates)
+        labels = dbscan.labels_
+        images = {}
+        for label in set(labels):
+            if label != -1:
+                images[f"Image_{label}"] = coordinates[labels == label]
+        images = list(images.values())
+        return images
+
+
     def get_image_positions(self, pixscale = None):
         """
         Get the image positions of the source.
@@ -112,25 +128,8 @@ class ClusterLensing:
         image_positions: The image positions of the source in arcsec.
         """
         pixscale = self.pixscale
-        #Separate the images
-        coordinates = np.array(self.find_rough_def_pix()) #data in pixel
-
-        # Apply DBSCAN clustering
-        # eps and min_samples need to be chosen based on your specific data
-        dbscan = DBSCAN(eps=3, min_samples=1).fit(coordinates)
-
-        # Extract labels
-        labels = dbscan.labels_
-
-        # Separate coordinates into arrays for each image
-        images = {}
-        for label in set(labels):
-            if label != -1:  # Ignore noise points
-                images[f"Image_{label}"] = coordinates[labels == label]
-
-        # images now contains separate arrays for each detected image
-        # convert the dictionary images to list
-        images = list(images.values())
+        
+        images = self.clustering()
 
         #for i in range(len(images)):
             #plt.scatter(images[i][:,0], images[i][:,1], s=0.5)
@@ -147,13 +146,25 @@ class ClusterLensing:
             x_max, x_min = np.max(images[i][:,0]), np.min(images[i][:,0])
             y_max, y_min = np.max(images[i][:,1]), np.min(images[i][:,1])
             img_guess = (np.random.uniform(x_min, x_max), np.random.uniform(y_min, y_max))
-            pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-9) # the 2 is for wider boundary
+            pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-15) # the 2 is for wider boundary
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
             #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
             img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)
 
         return img              # in arcsec
 
+    def partial_derivative(self, func, var, point, h = 1e-9): 
+        """
+        Calculate the partial derivative of a function.
+        """
+        args = point[:]
+        def wraps(x):
+            args[var] = x
+            return func(args)
+
+        #print(wraps(point[var]+h), wraps(point[var]-h))
+
+        return lambda x: (wraps(x+h) - wraps(x-h))/(2*h) # central difference diff fct
 
     def get_magnifications(self, h = 1e-9):
         """
@@ -163,30 +174,19 @@ class ClusterLensing:
         ---------------
         magnifications: The magnifications of the images.
         """
-        def partial_derivative(func, var, point): 
-            args = point[:]
-            def wraps(x):
-                args[var] = x
-                return func(args)
-
-            #print(wraps(point[var]+h), wraps(point[var]-h))
-
-            return lambda x: (wraps(x+h) - wraps(x-h))/(2*h) # central difference diff fct
 
         def alpha(t):
             alpha = self.def_angle_interpolate(t[0], t[1])[1]
-            a = float(f"{alpha[0]:.12f}")
-            b = float(f"{alpha[1]:.12f}")
-            return np.array([a, b])
+            return alpha
 
         theta = np.array(self.get_image_positions())/self.pixscale    #in pixel
         magnification = []
 
         for theta in enumerate(theta):
-            dalpha1_dtheta1 = partial_derivative(lambda t: alpha(t)[0], 0, theta[1])(theta[1][0])
-            dalpha1_dtheta2 = partial_derivative(lambda t: alpha(t)[0], 1, theta[1])(theta[1][1])
-            dalpha2_dtheta1 = partial_derivative(lambda t: alpha(t)[1], 0, theta[1])(theta[1][0])
-            dalpha2_dtheta2 = partial_derivative(lambda t: alpha(t)[1], 1, theta[1])(theta[1][1])
+            dalpha1_dtheta1 = self.partial_derivative(lambda t: alpha(t)[0], 0, theta[1])(theta[1][0])
+            dalpha1_dtheta2 = self.partial_derivative(lambda t: alpha(t)[0], 1, theta[1])(theta[1][1])
+            dalpha2_dtheta1 = self.partial_derivative(lambda t: alpha(t)[1], 0, theta[1])(theta[1][0])
+            dalpha2_dtheta2 = self.partial_derivative(lambda t: alpha(t)[1], 1, theta[1])(theta[1][1])
             #print(dalpha1_dtheta1, dalpha1_dtheta2, dalpha2_dtheta1, dalpha2_dtheta2)
 
 
@@ -201,6 +201,29 @@ class ClusterLensing:
 
         return magnification
     
+
+    def psi_interpolate(self, x,y):  #(x,y) is img in arcsec 
+        """
+        Interpolate the lens potential at the image position.
+        """
+        psi = self.lens_potential_map   #in arcsec^2
+        x = x/self.pixscale
+        y = y/self.pixscale
+        dx = x - floor(x)
+        dy = y - floor(y)
+        top_left = np.array(psi[ceil(y), floor(x)]) #to match (y,x) of alpha grid
+        top_right = np.array(psi[ceil(y), ceil(x)])
+        bottom_left = np.array(psi[floor(y), floor(x)])
+        bottom_right = np.array(psi[floor(y), ceil(x)])
+        top = top_left * (1 - dx) + top_right * dx
+        bottom = bottom_left * (1 - dx) + bottom_right * dx
+        psi = top * dy + bottom *(1 - dy)
+        return psi
+
+    def fermat_potential(self, theta, beta):
+        """Get the Fermat potential at the image position."""
+        return 0.5 * (np.linalg.norm(theta - beta)**2) - self.psi_interpolate(theta[0], theta[1])
+
     def get_time_delays(self):
         """
         Get the time delays of the images.
@@ -212,25 +235,6 @@ class ClusterLensing:
         
         theta = self.get_image_positions()     #in arcsec
         beta = np.array([self.x_src * self.pixscale, self.y_src * self.pixscale])   #in arcsec
-        data_psi_arcsec = self.lens_potential_map  #in arcsec^2
-
-        def psi_interpolate(x,y, psi = data_psi_arcsec):  #(x,y) is img in arcsec 
-            x = x/self.pixscale
-            y = y/self.pixscale
-            dx = x - floor(x)
-            dy = y - floor(y)
-            top_left = np.array(psi[ceil(y), floor(x)]) #to match (y,x) of alpha grid
-            top_right = np.array(psi[ceil(y), ceil(x)])
-            bottom_left = np.array(psi[floor(y), floor(x)])
-            bottom_right = np.array(psi[floor(y), ceil(x)])
-            top = top_left * (1 - dx) + top_right * dx
-            bottom = bottom_left * (1 - dx) + bottom_right * dx
-            psi = top * dy + bottom *(1 - dy)
-            return psi
-
-        def fermat_potential(theta, beta):
-            return 0.5 * (np.linalg.norm(theta - beta)**2) - psi_interpolate(theta[0], theta[1])
-            
 
         #for i in range(len(theta)):     #pylint: disable=consider-using-enumerate
             #print(f"Interpolation Fermat potential at {theta[i]}: {fermat_potential(np.array(theta[i]), beta)}")
@@ -238,7 +242,7 @@ class ClusterLensing:
         # time delay by diff of fermat potentials and scale it by time-delay distance
         dt = []
         for i in range(len(theta)):  #pylint: disable=consider-using-enumerate
-            dt.append(fermat_potential(np.array(theta[i]), beta) - fermat_potential(np.array(theta[0]), beta))
+            dt.append(self.fermat_potential(np.array(theta[i]), beta) - self.fermat_potential(np.array(theta[0]), beta))
             #print(f"demensionless time delay at {theta[i]}: {dt[i]}")
 
         # Redshifts
