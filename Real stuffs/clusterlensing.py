@@ -67,7 +67,6 @@ class ClusterLensing:
         #pixscale = self.pixscale
         #plt.scatter([i[0]*pixscale for i in coordinates], [i[1]*pixscale for i in coordinates], c='r', s=1)
         #plt.scatter(coord[0]*pixscale, coord[1]*pixscale, c='b', s=1)
-    
         return coordinates   # in pixel
 
     def def_angle_interpolate(self, x,y, alpha_x= None, alpha_y = None):  #(x,y) is img_guess
@@ -142,8 +141,7 @@ class ClusterLensing:
         #plt.scatter([i[0]* pixscale for i in coordinates], [i[1]* pixscale for i in coordinates], c='y', s=5)     #plot in arcsec
 
         img = [[] for _ in range(len(images))]
-        img_pos_x = []
-        img_pos_y = []
+
 
         for i in range(len(images)):                   #pylint: disable=consider-using-enumerate
             x_max, x_min = np.max(images[i][:,0]), np.min(images[i][:,0])
@@ -153,10 +151,8 @@ class ClusterLensing:
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
             #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
             img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)
-            img_pos_x.append(pos.x[0]* pixscale)
-            img_pos_y.append(pos.x[1]* pixscale)
 
-        return img_pos_x,img_pos_y              # in arcsec
+        return img              # in arcsec
 
 
     def get_magnifications(self, h = 1e-9):
