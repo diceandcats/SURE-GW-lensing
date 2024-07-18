@@ -76,7 +76,7 @@ class ClusterLensing:
         """
         alpha_x = np.array(self.alpha_map_x, dtype=np.float64)    #in pixel
         alpha_y = np.array(self.alpha_map_y, dtype=np.float64)    #in pixel
-    
+
         dx = x - floor(x)
         dy = y - floor(y)
         top_left = np.array([alpha_x[ceil(y), floor(x)], alpha_y[ceil(y), floor(x)]]) #to match (y,x) of alpha grid
@@ -88,7 +88,7 @@ class ClusterLensing:
         alpha = top * dy + bottom *(1 - dy)
         src_guess = np.array([x-alpha[0], y-alpha[1]])
         return src_guess, alpha
-    
+
 
     def diff_interpolate (self, img_guess):
         """
@@ -97,7 +97,7 @@ class ClusterLensing:
         real_src = (self.x_src, self.y_src)   # in pixel
         src_guess = self.def_angle_interpolate(img_guess[0],img_guess[1])[0]    # in pixel
         return np.sqrt((src_guess[0]-real_src[0])**2 + (src_guess[1]-real_src[1])**2)
-    
+
     def clustering(self):
         """
         Cluster the image positions.
@@ -128,13 +128,13 @@ class ClusterLensing:
         image_positions: The image positions of the source in arcsec.
         """
         pixscale = self.pixscale
-        
+
         images = self.clustering()
 
         #for i in range(len(images)):
             #plt.scatter(images[i][:,0], images[i][:,1], s=0.5)
         #print(f'Number of pixels: {[np.sum(len(images[i])) for i in range(len(images))]}')
-        
+
         # Get the image positions
         #plt.scatter(self.x_src* pixscale, self.y_src* pixscale, c='b')                                            #plot in arcsec
         #plt.scatter([i[0]* pixscale for i in coordinates], [i[1]* pixscale for i in coordinates], c='y', s=5)     #plot in arcsec
@@ -142,18 +142,18 @@ class ClusterLensing:
         img = [[] for _ in range(len(images))]
 
 
-        for i in range(len(images)):                   #pylint: disable=consider-using-enumerate
-            x_max, x_min = np.max(images[i][:,0]), np.min(images[i][:,0])
-            y_max, y_min = np.max(images[i][:,1]), np.min(images[i][:,1])
+        for i, image in enumerate(images):               
+            x_max, x_min = np.max(image[:,0]), np.min(image[:,0])
+            y_max, y_min = np.max(image[:,1]), np.min(image[:,1])
             img_guess = (np.random.uniform(x_min, x_max), np.random.uniform(y_min, y_max))
-            pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-15) # the 2 is for wider boundary
+            pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-10) # the 2 is for wider boundary
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
             #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
             img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)
 
         return img              # in arcsec
 
-    def partial_derivative(self, func, var, point, h = 1e-9): 
+    def partial_derivative(self, func, var, point, h = 1e-9):
         """
         Calculate the partial derivative of a function.
         """
@@ -166,7 +166,7 @@ class ClusterLensing:
 
         return lambda x: (wraps(x+h) - wraps(x-h))/(2*h) # central difference diff fct
 
-    def get_magnifications(self, h = 1e-9):
+    def get_magnifications(self):
         """
         Get the magnifications of the images.
 
@@ -178,8 +178,9 @@ class ClusterLensing:
         def alpha(t):
             alpha = self.def_angle_interpolate(t[0], t[1])[1]
             return alpha
-
-        theta = np.array(self.get_image_positions())/self.pixscale    #in pixel
+        theta_arcsec = self.get_image_positions()
+        theta = np.array(theta_arcsec)/self.pixscale    #in pixel
+        
         magnification = []
 
         for theta in enumerate(theta):
@@ -199,7 +200,19 @@ class ClusterLensing:
             # Calculate magnification
             magnification.append( 1 / np.linalg.det(a))
 
-        return magnification
+        # using dataframe to store the magnification
+
+        data_mag=[]
+        for i , (x,y) in enumerate(theta_arcsec):
+            mag = magnification[i]
+            data_mag.append({'x': x, 'y': y, 'magnification': mag})
+
+        table = pd.DataFrame(data_mag)
+        pd.options.display.float_format = '{:.12f}'.format
+        table = table.sort_values(by=['x', 'y']).reset_index(drop=True)
+        
+
+        return table
     
 
     def psi_interpolate(self, x,y):  #(x,y) is img in arcsec 
@@ -232,22 +245,22 @@ class ClusterLensing:
         ---------------
         time_delays: The time delays of the images in days.
         """
-        
+
         theta = self.get_image_positions()     #in arcsec
         beta = np.array([self.x_src * self.pixscale, self.y_src * self.pixscale])   #in arcsec
 
         #for i in range(len(theta)):     #pylint: disable=consider-using-enumerate
             #print(f"Interpolation Fermat potential at {theta[i]}: {fermat_potential(np.array(theta[i]), beta)}")
 
-        # time delay by diff of fermat potentials and scale it by time-delay distance
-        dt = []
-        for i in range(len(theta)):  #pylint: disable=consider-using-enumerate
-            dt.append(self.fermat_potential(np.array(theta[i]), beta) - self.fermat_potential(np.array(theta[0]), beta))
-            #print(f"demensionless time delay at {theta[i]}: {dt[i]}")
-
+        # time delay by diff of fermat potentials
+        
+        fermat_potential = [self.fermat_potential(np.array(pos), beta) for pos in theta]
+        min_fermat = min(fermat_potential)
+        dt = [fermat_potential[i] - min_fermat for i in range(len(fermat_potential))]
+        # Scale dt by time-delay distance
         # Redshifts
-        z_L = 0.5
-        z_S = 1.0
+        z_L = self.z_l
+        z_S = self.z_s
 
         # Calculate distances
         cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
@@ -256,12 +269,21 @@ class ClusterLensing:
         D_LS = cosmo.angular_diameter_distance_z1z2(z_L, z_S)
         #print(D_LS)
         time_delay_distance = (1 + z_L) * D_L * D_S / D_LS * const.Mpc
-        #print(f"Time-delay distance: {time_delay_distance.value}")
         dt_days = np.array(dt) * time_delay_distance.value / const.c / const.day_s * const.arcsec ** 2
+
+
+        data = {
+            'theta_x': [pos[0] for pos in theta],
+            'theta_y': [pos[1] for pos in theta],
+            'd_fermat': dt,
+            'delta_t(days)': dt_days
+        }
+        df = pd.DataFrame(data)
+        df_sorted = df.sort_values(by='d_fermat').reset_index(drop=True)
+        
+        #print(f"Time-delay distance: {time_delay_distance.value}")
         #print(f"Numerical time delay in days: {dt_days} days")
-        return dt_days
+        return df_sorted
 
-
-    
 
         
