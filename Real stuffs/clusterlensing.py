@@ -14,7 +14,7 @@ class ClusterLensing:
     Class to get the lensing properties of a cluster by deflection and lens potential map of the cluster.
     """
 
-    def __init__(self, alpha_map_x, alpha_map_y, lens_potential_map, z_l , z_s, pixscale, size, x_src, y_src):
+    def __init__(self, alpha_map_x, alpha_map_y, lens_potential_map, z_l , z_s, pixscale, size, x_src, y_src, diff_z = False):
         """
         Parameters:
         ---------------
@@ -39,6 +39,31 @@ class ClusterLensing:
         self.magnifications = None
         self.time_delays = None
 
+        if diff_z:
+            self.scaling()
+
+    def scaling(self):
+        """
+        Scale the deflection and lens potential maps.
+        """
+        # Redshifts
+        z_L = self.z_l
+        z_S = self.z_s
+
+        # Calculate distances
+        cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
+        D_S1 = cosmo.angular_diameter_distance(1.0)
+        D_S2 = cosmo.angular_diameter_distance(z_S)
+        D_LS1 = cosmo.angular_diameter_distance_z1z2(z_L, 1.0)
+        D_LS2 = cosmo.angular_diameter_distance_z1z2(z_L, z_S)
+
+        # Scale deflection map
+        scal = (D_LS1 * D_S2) / (D_LS2 * D_S1)
+        self.alpha_map_x *= scal
+        self.alpha_map_y *= scal
+
+        # Scale lens potential map
+        self.lens_potential_map *= scal
 
     def find_rough_def_pix(self):    # result are in pixel
         """
