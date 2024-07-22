@@ -2,7 +2,7 @@
 
 from math import ceil, floor
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from sklearn.cluster import DBSCAN
 import scipy.optimize._minimize as minimize
 from astropy.cosmology import FlatLambdaCDM
@@ -38,7 +38,7 @@ class ClusterLensing:
         self.image_positions = None
         self.magnifications = None
         self.time_delays = None
-
+        self.diff_z = diff_z
         if diff_z:
             self.scaling()
 
@@ -58,7 +58,7 @@ class ClusterLensing:
         D_LS2 = cosmo.angular_diameter_distance_z1z2(z_L, z_S)
 
         # Scale deflection map
-        scal = (D_LS1 * D_S2) / (D_LS2 * D_S1)
+        scal = (D_LS2 * D_S1) / (D_LS1 * D_S2)
         self.alpha_map_x *= scal
         self.alpha_map_y *= scal
 
@@ -262,6 +262,10 @@ class ClusterLensing:
         """Get the Fermat potential at the image position."""
         return 0.5 * (np.linalg.norm(theta - beta)**2) - self.psi_interpolate(theta[0], theta[1])
 
+    def mp_fermat_potential(self, theta, beta):
+        """Get the Fermat potential at the image position for mp case."""
+        return 0
+
     def get_time_delays(self):
         """
         Get the time delays of the images.
@@ -270,45 +274,47 @@ class ClusterLensing:
         ---------------
         time_delays: The time delays of the images in days.
         """
-
         theta = self.get_image_positions()     #in arcsec
         beta = np.array([self.x_src * self.pixscale, self.y_src * self.pixscale])   #in arcsec
 
-        #for i in range(len(theta)):     #pylint: disable=consider-using-enumerate
-            #print(f"Interpolation Fermat potential at {theta[i]}: {fermat_potential(np.array(theta[i]), beta)}")
+        if self.diff_z:
+            fermat_potential = [self.mp_fermat_potential(np.array(pos), beta) for pos in theta]
+        else:
+           
 
-        # time delay by diff of fermat potentials
+            #for i in range(len(theta)):     #pylint: disable=consider-using-enumerate
+                #print(f"Interpolation Fermat potential at {theta[i]}: {fermat_potential(np.array(theta[i]), beta)}")
+
+            # time delay by diff of fermat potentials
         
-        fermat_potential = [self.fermat_potential(np.array(pos), beta) for pos in theta]
-        min_fermat = min(fermat_potential)
-        dt = [fermat_potential[i] - min_fermat for i in range(len(fermat_potential))]
-        # Scale dt by time-delay distance
-        # Redshifts
-        z_L = self.z_l
-        z_S = self.z_s
+            fermat_potential = [self.fermat_potential(np.array(pos), beta) for pos in theta]
+            min_fermat = min(fermat_potential)
+            dt = [fermat_potential[i] - min_fermat for i in range(len(fermat_potential))]
+            # Scale dt by time-delay distance
+            # Redshifts
+            z_L = self.z_l
+            z_S = self.z_s
 
-        # Calculate distances
-        cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
-        D_L = cosmo.angular_diameter_distance(z_L)
-        D_S = cosmo.angular_diameter_distance(z_S)
-        D_LS = cosmo.angular_diameter_distance_z1z2(z_L, z_S)
-        #print(D_LS)
-        time_delay_distance = (1 + z_L) * D_L * D_S / D_LS * const.Mpc
-        dt_days = np.array(dt) * time_delay_distance.value / const.c / const.day_s * const.arcsec ** 2
-
-
-        data = {
-            'theta_x': [pos[0] for pos in theta],
-            'theta_y': [pos[1] for pos in theta],
-            'd_fermat': dt,
-            'delta_t(days)': dt_days
-        }
-        df = pd.DataFrame(data)
-        df_sorted = df.sort_values(by='d_fermat').reset_index(drop=True)
+            # Calculate distances
+            cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
+            D_L = cosmo.angular_diameter_distance(z_L)
+            D_S = cosmo.angular_diameter_distance(z_S)
+            D_LS = cosmo.angular_diameter_distance_z1z2(z_L, z_S)
+            #print(D_LS)
+            time_delay_distance = (1 + z_L) * D_L * D_S / D_LS * const.Mpc
+            dt_days = np.array(dt) * time_delay_distance.value / const.c / const.day_s * const.arcsec ** 2
+            data = {
+                'theta_x': [pos[0] for pos in theta],
+                'theta_y': [pos[1] for pos in theta],
+                'd_fermat': dt,
+                'delta_t(days)': dt_days
+            }
+            df = pd.DataFrame(data)
+            df_sorted = df.sort_values(by='d_fermat').reset_index(drop=True)
         
-        #print(f"Time-delay distance: {time_delay_distance.value}")
-        #print(f"Numerical time delay in days: {dt_days} days")
-        return df_sorted
+            #print(f"Time-delay distance: {time_delay_distance.value}")
+            #print(f"Numerical time delay in days: {dt_days} days")
+            return df_sorted
 
 
         
