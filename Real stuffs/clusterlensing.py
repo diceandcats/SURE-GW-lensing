@@ -9,6 +9,7 @@ from astropy.cosmology import FlatLambdaCDM
 import lenstronomy.Util.constants as const
 import pandas as pd
 
+# pylint: disable=C0103
 class ClusterLensing:
     """
     Class to get the lensing properties of a cluster by deflection and lens potential map of the cluster.
@@ -39,8 +40,9 @@ class ClusterLensing:
         self.magnifications = None
         self.time_delays = None
         self.diff_z = diff_z
+
         if diff_z:
-            self.scaling()
+            self.D_S1, self.D_S2, self.D_LS1, self.D_LS2 = self.scaling()
 
     def scaling(self):
         """
@@ -58,12 +60,10 @@ class ClusterLensing:
         D_LS2 = cosmo.angular_diameter_distance_z1z2(z_L, z_S)
 
         # Scale deflection map
-        scal = (D_LS2 * D_S1) / (D_LS1 * D_S2)
+        scal = (D_LS1 * D_S2)/(D_LS2 * D_S1)
         self.alpha_map_x *= scal
         self.alpha_map_y *= scal
-
-        # Scale lens potential map
-        self.lens_potential_map *= scal
+        return D_S1, D_S2, D_LS1, D_LS2
 
     def find_rough_def_pix(self):    # result are in pixel
         """
@@ -264,7 +264,8 @@ class ClusterLensing:
 
     def mp_fermat_potential(self, theta, beta):
         """Get the Fermat potential at the image position for mp case."""
-        return 0
+        factor = self.D_S2 * self.D_LS1 / self.D_LS2 / self.D_S1
+        return 0.5 * (np.linalg.norm(theta - beta)**2) - factor *self.psi_interpolate(theta[0], theta[1])
 
     def get_time_delays(self):
         """
@@ -277,11 +278,37 @@ class ClusterLensing:
         theta = self.get_image_positions()     #in arcsec
         beta = np.array([self.x_src * self.pixscale, self.y_src * self.pixscale])   #in arcsec
 
+        # Redshifts
+        z_L = self.z_l
+        z_S = self.z_s
+
+        # Calculate distances
+        cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
+        D_L = cosmo.angular_diameter_distance(z_L)
+        D_S = cosmo.angular_diameter_distance(z_S)
+        D_LS = cosmo.angular_diameter_distance_z1z2(z_L, z_S)
+        #print(D_LS)
+        time_delay_distance = (1 + z_L) * D_L * D_S / D_LS * const.Mpc
+
         if self.diff_z:
             fermat_potential = [self.mp_fermat_potential(np.array(pos), beta) for pos in theta]
-        else:
-           
+            min_fermat = min(fermat_potential)
+            dt = [fermat_potential[i] - min_fermat for i in range(len(fermat_potential))]
+            dt_days = np.array(dt) * time_delay_distance.value / const.c / const.day_s * const.arcsec ** 2
+            data = {
+                'theta_x': [pos[0] for pos in theta],
+                'theta_y': [pos[1] for pos in theta],
+                'd_fermat': dt,
+                'delta_t(days)': dt_days
+            }
+            df = pd.DataFrame(data)
+            df_sorted = df.sort_values(by='d_fermat').reset_index(drop=True)
+        
+            #print(f"Time-delay distance: {time_delay_distance.value}")
+            #print(f"Numerical time delay in days: {dt_days} days")
+            return df_sorted
 
+        else:
             #for i in range(len(theta)):     #pylint: disable=consider-using-enumerate
                 #print(f"Interpolation Fermat potential at {theta[i]}: {fermat_potential(np.array(theta[i]), beta)}")
 
@@ -290,18 +317,7 @@ class ClusterLensing:
             fermat_potential = [self.fermat_potential(np.array(pos), beta) for pos in theta]
             min_fermat = min(fermat_potential)
             dt = [fermat_potential[i] - min_fermat for i in range(len(fermat_potential))]
-            # Scale dt by time-delay distance
-            # Redshifts
-            z_L = self.z_l
-            z_S = self.z_s
-
-            # Calculate distances
-            cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
-            D_L = cosmo.angular_diameter_distance(z_L)
-            D_S = cosmo.angular_diameter_distance(z_S)
-            D_LS = cosmo.angular_diameter_distance_z1z2(z_L, z_S)
-            #print(D_LS)
-            time_delay_distance = (1 + z_L) * D_L * D_S / D_LS * const.Mpc
+            
             dt_days = np.array(dt) * time_delay_distance.value / const.c / const.day_s * const.arcsec ** 2
             data = {
                 'theta_x': [pos[0] for pos in theta],
