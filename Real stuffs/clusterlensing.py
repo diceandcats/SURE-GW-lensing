@@ -128,6 +128,8 @@ class ClusterLensing:
         Cluster the image positions.
         """
         coordinates = np.array(self.find_rough_def_pix())
+        if len(coordinates) == 0:
+            return []
         dbscan = DBSCAN(eps=3, min_samples=1).fit(coordinates)
         labels = dbscan.labels_
         images = {}
@@ -171,7 +173,7 @@ class ClusterLensing:
             x_max, x_min = np.max(image[:,0]), np.min(image[:,0])
             y_max, y_min = np.max(image[:,1]), np.min(image[:,1])
             img_guess = (np.random.uniform(x_min, x_max), np.random.uniform(y_min, y_max))
-            pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-10) # the 2 is for wider boundary
+            pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-12) # the 2 is for wider boundary
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
             #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
             img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)
@@ -292,6 +294,8 @@ class ClusterLensing:
 
         if self.diff_z:
             fermat_potential = [self.mp_fermat_potential(np.array(pos), beta) for pos in theta]
+            if len(fermat_potential) == 0:
+                return []
             min_fermat = min(fermat_potential)
             dt = [fermat_potential[i] - min_fermat for i in range(len(fermat_potential))]
             dt_days = np.array(dt) * time_delay_distance.value / const.c / const.day_s * const.arcsec ** 2
