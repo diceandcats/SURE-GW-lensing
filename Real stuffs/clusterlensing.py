@@ -19,8 +19,8 @@ class ClusterLensing:
         """
         Parameters:
         ---------------
-        deflection_map_x: The deflection map in x direction in arcsec.
-        deflection_map_y: The deflection map in y direction in arcsec
+        alpha_map_x: The deflection map in x direction in arcsec.
+        alpha_map_y: The deflection map in y direction in arcsec
         lens_potential_map: The lens potential map in arcsec^2.
         x_src: The x coordinate of the source in arcsec.
         y_src: The y coordinate of the source in arcsec.
