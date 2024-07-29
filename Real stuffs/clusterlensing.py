@@ -61,6 +61,7 @@ class ClusterLensing:
 
         # Scale deflection map
         scal = (D_LS1 * D_S2)/(D_LS2 * D_S1)
+        print(f"Scaling factor: {scal}")
         self.alpha_map_x *= scal
         self.alpha_map_y *= scal
         return D_S1, D_S2, D_LS1, D_LS2
@@ -169,14 +170,14 @@ class ClusterLensing:
         img = [[] for _ in range(len(images))]
 
 
-        for i, image in enumerate(images):               
+        for i, image in enumerate(images):
             x_max, x_min = np.max(image[:,0]), np.min(image[:,0])
             y_max, y_min = np.max(image[:,1]), np.min(image[:,1])
             img_guess = (np.random.uniform(x_min, x_max), np.random.uniform(y_min, y_max))
             pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-12) # the 2 is for wider boundary
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
             #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
-            img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)
+            img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)   # in arcsec
 
         return img              # in arcsec
 
@@ -233,10 +234,12 @@ class ClusterLensing:
         for i , (x,y) in enumerate(theta_arcsec):
             mag = magnification[i]
             data_mag.append({'x': x, 'y': y, 'magnification': mag})
-
+        
         table = pd.DataFrame(data_mag)
         pd.options.display.float_format = '{:.12f}'.format
-        table = table.sort_values(by=['x', 'y']).reset_index(drop=True)
+        if table.empty:
+            return []
+        table = table.sort_values(by=['x']).reset_index(drop=True)
         
 
         return table
@@ -269,7 +272,7 @@ class ClusterLensing:
         factor = self.D_S2 * self.D_LS1 / self.D_LS2 / self.D_S1
         return 0.5 * (np.linalg.norm(theta - beta)**2) - factor *self.psi_interpolate(theta[0], theta[1])
 
-    def get_time_delays(self):
+    def get_time_delays(self, theta):
         """
         Get the time delays of the images.
 
@@ -277,7 +280,7 @@ class ClusterLensing:
         ---------------
         time_delays: The time delays of the images in days.
         """
-        theta = self.get_image_positions()     #in arcsec
+        #theta = self.get_image_positions()     #in arcsec
         beta = np.array([self.x_src * self.pixscale, self.y_src * self.pixscale])   #in arcsec
 
         # Redshifts
@@ -335,6 +338,16 @@ class ClusterLensing:
             #print(f"Time-delay distance: {time_delay_distance.value}")
             #print(f"Numerical time delay in days: {dt_days} days")
             return df_sorted
+        
+    def get_dt_distribution(self):
+        """
+        Get the lens potential map of the cluster.
+
+        Returns:
+        ---------------
+        lens_potential_map: The lens potential map of the cluster in arcsec^2.
+        """
+        return self.lens_potential_map
 
 
         
