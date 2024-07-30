@@ -15,7 +15,7 @@ class ClusterLensing:
     Class to get the lensing properties of a cluster by deflection and lens potential map of the cluster.
     """
 
-    def __init__(self, alpha_map_x, alpha_map_y, lens_potential_map, z_l , z_s, pixscale, size, x_src, y_src, diff_z = False):
+    def __init__(self, alpha_map_x, alpha_map_y, lens_potential_map, z_l , z_s, pixscale, size, diff_z = False):
         """
         Parameters:
         ---------------
@@ -34,8 +34,6 @@ class ClusterLensing:
         self.z_s = z_s
         self.pixscale = pixscale
         self.size = size
-        self.x_src = x_src / pixscale   #in pixel now
-        self.y_src = y_src / pixscale   #in pixel now
         self.image_positions = None
         self.magnifications = None
         self.time_delays = None
@@ -66,13 +64,13 @@ class ClusterLensing:
         self.alpha_map_y *= scal
         return D_S1, D_S2, D_LS1, D_LS2
 
-    def find_rough_def_pix(self):    # result are in pixel
+    def find_rough_def_pix(self, x_src, y_src):    # result are in pixel
         """
         Find the pixels that can ray-trace back to the source position roughly.
         """
         alpha_x = self.alpha_map_x   # make sure alpha_x and alpha_y are in pixel
         alpha_y = self.alpha_map_y
-        coord = (self.x_src, self.y_src)  # in pixel
+        coord = (x_src, y_src)  # in pixel
         coord_x_r, coord_y_r = coord[0] % 1, coord[1] % 1
         y_round, x_round = round(coord[1]), round(coord[0])
 
@@ -116,19 +114,19 @@ class ClusterLensing:
         return src_guess, alpha
 
 
-    def diff_interpolate (self, img_guess):
+    def diff_interpolate (self, img_guess, x_src, y_src):
         """
         Difference between the guessed source position and the real source position.
         """
-        real_src = (self.x_src, self.y_src)   # in pixel
+        real_src = (x_src, y_src)   # in pixel
         src_guess = self.def_angle_interpolate(img_guess[0],img_guess[1])[0]    # in pixel
         return np.sqrt((src_guess[0]-real_src[0])**2 + (src_guess[1]-real_src[1])**2)
 
-    def clustering(self):
+    def clustering(self, x_src, y_src):
         """
         Cluster the image positions.
         """
-        coordinates = np.array(self.find_rough_def_pix())
+        coordinates = np.array(self.find_rough_def_pix(x_src, y_src))
         if len(coordinates) == 0:
             return []
         dbscan = DBSCAN(eps=3, min_samples=1).fit(coordinates)
@@ -141,7 +139,7 @@ class ClusterLensing:
         return images
 
 
-    def get_image_positions(self, pixscale = None):
+    def get_image_positions(self, x_src, y_src, pixscale = None):
         """
         Get the image positions of the source.
 
@@ -156,8 +154,9 @@ class ClusterLensing:
         image_positions: The image positions of the source in arcsec.
         """
         pixscale = self.pixscale
-
-        images = self.clustering()
+        x_src = x_src / pixscale
+        y_src = y_src / pixscale
+        images = self.clustering(x_src, y_src)
 
         #for i in range(len(images)):
             #plt.scatter(images[i][:,0], images[i][:,1], s=0.5)
@@ -169,12 +168,15 @@ class ClusterLensing:
 
         img = [[] for _ in range(len(images))]
 
+        def wrap_diff_interpolate(img_guess):
+            return self.diff_interpolate(img_guess, x_src, y_src)
+
 
         for i, image in enumerate(images):
             x_max, x_min = np.max(image[:,0]), np.min(image[:,0])
             y_max, y_min = np.max(image[:,1]), np.min(image[:,1])
             img_guess = (np.random.uniform(x_min, x_max), np.random.uniform(y_min, y_max))
-            pos = minimize.minimize(self.diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-12) # the 2 is for wider boundary
+            pos = minimize.minimize(wrap_diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-12) # the 2 is for wider boundary
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
             #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
             img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)   # in arcsec
