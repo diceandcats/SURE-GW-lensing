@@ -59,7 +59,6 @@ class ClusterLensing:
 
         # Scale deflection map
         scal = (D_LS1 * D_S2)/(D_LS2 * D_S1)
-        print(f"Scaling factor: {scal}")
         self.alpha_map_x *= scal
         self.alpha_map_y *= scal
         return D_S1, D_S2, D_LS1, D_LS2
@@ -145,8 +144,8 @@ class ClusterLensing:
 
         Parameters:
         ---------------
-        x_src: The x coordinate of the source in pixel.
-        y_src: The y coordinate of the source in pixel.
+        x_src: The x coordinate of the source in arcsec.
+        y_src: The y coordinate of the source in arcsec.
         pixscale: The pixel scale of the deflection map in arcsec/pixel.
 
         Returns:
@@ -180,7 +179,8 @@ class ClusterLensing:
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
             #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
             img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)   # in arcsec
-
+            
+        img = sorted(img, key=lambda x: x[0])
         return img              # in arcsec
 
     def partial_derivative(self, func, var, point, h = 1e-9):
@@ -196,9 +196,13 @@ class ClusterLensing:
 
         return lambda x: (wraps(x+h) - wraps(x-h))/(2*h) # central difference diff fct
 
-    def get_magnifications(self):
+    def get_magnifications(self, theta):
         """
         Get the magnifications of the images.
+
+        Parameters:
+        ---------------
+        theta : tuple of image position(x,y) in arcsec
 
         Returns:
         ---------------
@@ -208,7 +212,7 @@ class ClusterLensing:
         def alpha(t):
             alpha = self.def_angle_interpolate(t[0], t[1])[1]
             return alpha
-        theta_arcsec = self.get_image_positions()
+        theta_arcsec = theta           # in tuple
         theta = np.array(theta_arcsec)/self.pixscale    #in pixel
         
         magnification = []
@@ -232,19 +236,19 @@ class ClusterLensing:
 
         # using dataframe to store the magnification
 
-        data_mag=[]
-        for i , (x,y) in enumerate(theta_arcsec):
-            mag = magnification[i]
-            data_mag.append({'x': x, 'y': y, 'magnification': mag})
+        #for dataframe display
+        #data_mag=[]
+        #for i , (x,y) in enumerate(theta_arcsec):
+            #mag = magnification[i]
+            #data_mag.append({'x': x, 'y': y, 'magnification': mag})
         
-        table = pd.DataFrame(data_mag)
-        pd.options.display.float_format = '{:.12f}'.format
-        if table.empty:
-            return []
-        table = table.sort_values(by=['x']).reset_index(drop=True)
-        
+        #table = pd.DataFrame(data_mag)
+        #pd.options.display.float_format = '{:.12f}'.format
+        #if table.empty:
+            #return []
+        #table = table.sort_values(by=['x']).reset_index(drop=True)
 
-        return table
+        return magnification
     
 
     def psi_interpolate(self, x,y):  #(x,y) is img in arcsec 
@@ -274,7 +278,7 @@ class ClusterLensing:
         factor = self.D_S2 * self.D_LS1 / self.D_LS2 / self.D_S1
         return 0.5 * (np.linalg.norm(theta - beta)**2) - factor *self.psi_interpolate(theta[0], theta[1])
 
-    def get_time_delays(self, theta):
+    def get_time_delays(self, x_src, y_src, theta):
         """
         Get the time delays of the images.
 
@@ -283,7 +287,7 @@ class ClusterLensing:
         time_delays: The time delays of the images in days.
         """
         #theta = self.get_image_positions()     #in arcsec
-        beta = np.array([self.x_src * self.pixscale, self.y_src * self.pixscale])   #in arcsec
+        beta = np.array([x_src, y_src])   #in arcsec
 
         # Redshifts
         z_L = self.z_l
