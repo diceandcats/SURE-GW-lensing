@@ -176,7 +176,7 @@ class ClusterLensing:
             x_max, x_min = np.max(image[:,0]), np.min(image[:,0])
             y_max, y_min = np.max(image[:,1]), np.min(image[:,1])
             img_guess = (np.random.uniform(x_min, x_max), np.random.uniform(y_min, y_max))
-            pos = minimize.minimize(wrap_diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-9) # the 2 is for wider boundary
+            pos = minimize.minimize(wrap_diff_interpolate, img_guess, bounds =[(x_min-1.5, x_max+1.5), (y_min-1.5, y_max+1.5)], method='L-BFGS-B', tol=1e-9) # the 2 is for wider boundary
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
             #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
             img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)   # in arcsec
@@ -321,7 +321,7 @@ class ClusterLensing:
         
             #print(f"Time-delay distance: {time_delay_distance.value}")
             #print(f"Numerical time delay in days: {dt_days} days")
-            return df_sorted
+            return df_sorted, dt_days
 
         else:
             #for i in range(len(theta)):     #pylint: disable=consider-using-enumerate
