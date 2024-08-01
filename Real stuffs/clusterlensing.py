@@ -61,6 +61,7 @@ class ClusterLensing:
         scal = (D_LS1 * D_S2)/(D_LS2 * D_S1)
         self.alpha_map_x *= scal
         self.alpha_map_y *= scal
+
         return D_S1, D_S2, D_LS1, D_LS2
 
     def find_rough_def_pix(self, x_src, y_src):    # result are in pixel
@@ -175,12 +176,13 @@ class ClusterLensing:
             x_max, x_min = np.max(image[:,0]), np.min(image[:,0])
             y_max, y_min = np.max(image[:,1]), np.min(image[:,1])
             img_guess = (np.random.uniform(x_min, x_max), np.random.uniform(y_min, y_max))
-            pos = minimize.minimize(wrap_diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-12) # the 2 is for wider boundary
+            pos = minimize.minimize(wrap_diff_interpolate, img_guess, bounds =[(x_min-2, x_max+2), (y_min-2, y_max+2)], method='L-BFGS-B', tol=1e-9) # the 2 is for wider boundary
             #print(x_min* pixscale, x_max* pixscale, y_min* pixscale, y_max* pixscale, pos.x* pixscale, self.diff_interpolate(pos.x))
             #plt.scatter(pos.x[0]* pixscale, pos.x[1]* pixscale, c='g', s=10, marker='x')
             img[i] = (pos.x[0]* pixscale, pos.x[1]*pixscale)   # in arcsec
             
         img = sorted(img, key=lambda x: x[0])
+        
         return img              # in arcsec
 
     def partial_derivative(self, func, var, point, h = 1e-9):
@@ -247,7 +249,7 @@ class ClusterLensing:
         #if table.empty:
             #return []
         #table = table.sort_values(by=['x']).reset_index(drop=True)
-
+        
         return magnification
     
 
