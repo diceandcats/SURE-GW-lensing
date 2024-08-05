@@ -346,16 +346,46 @@ class ClusterLensing:
             #print(f"Time-delay distance: {time_delay_distance.value}")
             #print(f"Numerical time delay in days: {dt_days} days")
             return df_sorted
-        
-    def get_dt_distribution(self):
-        """
-        Get the lens potential map of the cluster.
+    
+
+    def all_dt(self, x_src, y_src, theta):
+        '''
+        Get all the time delays of the images.
 
         Returns:
         ---------------
-        lens_potential_map: The lens potential map of the cluster in arcsec^2.
-        """
-        return self.lens_potential_map
+        time_delays: The time delays of the images in days.
+        '''
+        beta = np.array([x_src, y_src])   #in arcsec
+
+        # Redshifts
+        z_L = self.z_l
+        z_S = self.z_s
+
+        # Calculate distances
+        cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
+        D_L = cosmo.angular_diameter_distance(z_L)
+        D_S = cosmo.angular_diameter_distance(z_S)
+        D_LS = cosmo.angular_diameter_distance_z1z2(z_L, z_S)
+        #print(D_LS)
+        time_delay_distance = (1 + z_L) * D_L * D_S / D_LS * const.Mpc
+
+        if self.diff_z:
+            fermat_potential = [self.mp_fermat_potential(np.array(pos), beta) for pos in theta]
+            if len(fermat_potential) == 0:
+                return []
+            all_dt = []
+            for i in range(len(fermat_potential)):          #pylint: disable=consider-using-enumerate
+                for j in range(i+1, len(fermat_potential)):
+                    diff = abs(fermat_potential[i] - fermat_potential[j])
+                    all_dt.append(diff)
+            
+            dt_days = np.array(all_dt) * time_delay_distance.value / const.c / const.day_s * const.arcsec ** 2
+        
+            #print(f"Time-delay distance: {time_delay_distance.value}")
+            #print(f"Numerical time delay in days: {dt_days} days")
+            return dt_days
+
 
 
         
